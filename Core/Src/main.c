@@ -214,7 +214,6 @@ void BorrarVect(void);
   */
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
 
 	//----------------------- ETHERNET W5100 Environment-------------------------//
@@ -308,8 +307,9 @@ int main(void)
 		wf._data2SND[14]=0x34;
 		wf._data2SND[15]=0x35;
 		wf._n_D2SND=12;
-		wf._estado_conexion=100;	//wf._estado_conexion=1;					//Arranco en WiFi Desconectado
-	    //wf._send_data=1;
+		wf._estado_conexion=100;//Si no se define no arranca	//wf._estado_conexion=1;					//Arranco en WiFi Desconectado
+		wf._automatizacion=WF_CONNECT_TCP;//wf._automatizacion=WF_SEND;
+		//wf._send_data=1;
 		// ----------- INICIO - Seteo de módulo Ethernet W5100 ----------- //
 	    // Conectado a SPI2
 		// PIN NSS - PortB 12
@@ -429,17 +429,27 @@ ETH.TX[3]= 0;
 
 //----------------INSTRUCCIONS POR PUERTO SERIE---------------------
 
+/**************[ INICIO PIDO ENVIAR DATOS ]**************/
 
-	  if (ESP_HW_Init==1) //Envío de data por tiempo, si la conexión 609,700
+
+	  if (ESP_HW_Init==1)
 	  {
-			if(WF_SND_FLAG==1)
+			if((WF_SND_FLAG==1)&&(wf._TCP_Local_Server_EN==0)&&(wf._estado_conexion>=609))
 			{	wf_snd_flag_ticks=0;
 				WF_SND_FLAG=0;
 				ModBUS_F03_Request(&mb_wf, 0 , 10);
-				EnviarDatos(&wf);
-				wf._estado_conexion=TCP_SND_EN_CURSO;
+				ModBUS(&mb_wf);							// Create ModBUS info to be sent
+				CopiaVector(wf._data2SND,mb_wf._MBUS_2SND,mb_wf._n_MBUS_2SND,0,'A');
+				wf._n_D2SND=mb_wf._n_MBUS_2SND;
+
+				if(wf._automatizacion < WF_SEND)		// Send only with automation sent diasabled
+				{
+					EnviarDatos(&wf);
+					wf._estado_conexion=TCP_SND_EN_CURSO;
+				}
 			}
 	  }
+/**************[ FIN PIDO ENVIAR DATOS ]**************/
 
 		if ((FLAG_UART2==1)||(FLAG_TIMEOUT==1))  //Si recibí datos o me fui por TimeOUT
 		{
@@ -461,7 +471,6 @@ ETH.TX[3]= 0;
 			if(FLAG_TIMEOUT==1)
 					{
 						FLAG_TIMEOUT=0;
-						//strcpy(wf._uartRCVD, UART_RX_vect_hld); //MEVOY
 					}
 
 			if (ESP_HW_Init==1) //Si el módulo se inició correctamente
@@ -484,13 +493,14 @@ ETH.TX[3]= 0;
 						CopiaVector(wf._data2SND,mb_wf._MBUS_2SND,mb_wf._n_MBUS_2SND,0,'A');
 						wf._n_D2SND=mb_wf._n_MBUS_2SND;
 						wf._new_data_rcv=0;//
+						wf._send_data=1;
 					}else
 						{
 							// DATA ERRONEA NO SE PROCESA
 						}
 					}
-				}
 
+		}
 
 		if (ESP_HW_Init==1) //Si el módulo se inició correctamente
 			{
@@ -505,9 +515,9 @@ ETH.TX[3]= 0;
 				esp_restart=0;
 			}
 
-  }}//2
+  }//2
   /* USER CODE END 3 */
-
+}
 
 /**
   * @brief System Clock Configuration
@@ -1023,7 +1033,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(DEBUG_OSC1_GPIO_Port, DEBUG_OSC1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LED_Pin|SPI2_NSS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LED_Pin|SPI2_NSS_Pin|DBG_ESP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(RST_WIFI_GPIO_Port, RST_WIFI_Pin, GPIO_PIN_SET);
@@ -1049,12 +1059,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : SPI2_NSS_Pin */
-  GPIO_InitStruct.Pin = SPI2_NSS_Pin;
+  /*Configure GPIO pins : SPI2_NSS_Pin DBG_ESP_Pin */
+  GPIO_InitStruct.Pin = SPI2_NSS_Pin|DBG_ESP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(SPI2_NSS_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 }
 
@@ -1074,7 +1084,8 @@ int ITM0_Write( char *ptr, int len)
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
-	ms_ticks++;
+
+	ms_ticks++;	//100 ms
 
 	ESP_ticks++;
 	if(mb_eth._w_answer) ETH_ticks++;
@@ -1084,12 +1095,13 @@ void SysTick_Handler(void)
 			ETH_ticks=0;
 		}
 
-	if(wf._estado_conexion==609 || wf._estado_conexion==700)	wf_snd_flag_ticks++;
+// ENVIO DATOS WF ---------------------------------------------------------------//
 
-	if(wf_snd_flag_ticks>= 10000)
-	{
-		WF_SND_FLAG=1;
-	}
+	if((wf._estado_conexion==609 || wf._estado_conexion==700)&&(wf._TCP_Local_Server_EN==0))  wf_snd_flag_ticks++;
+
+	if(wf_snd_flag_ticks>= 2000 && wf._ejecucion!=1 && wf._TCP_Local_Server_EN==0)		 	  WF_SND_FLAG=1;
+
+// ENVIO DATOS WF ----------------------------------- ---------------------------//
 
 if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
   {
@@ -1318,16 +1330,9 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 		  //ETH.TX[3]=0x00;
 		  SPI_ETH(&ETH);
 	  	  }
-
-
 	  if(min_ticks==2)//if(min_ticks==10)
 		  {
-		  	  min_ticks=0;
-		  	  /*
-
-		 	 SETEO CADA 2 min
-
-		  	  }*/
+		  	  min_ticks=0;  /* SETEO CADA 2 min*/
 		  }
   }
 
