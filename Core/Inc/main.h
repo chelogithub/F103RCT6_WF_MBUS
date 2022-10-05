@@ -68,6 +68,8 @@ void Error_Handler(void);
 #define SPI2_NSS_GPIO_Port GPIOB
 #define RST_WIFI_Pin GPIO_PIN_15
 #define RST_WIFI_GPIO_Port GPIOA
+#define DBG_ESP_Pin GPIO_PIN_9
+#define DBG_ESP_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

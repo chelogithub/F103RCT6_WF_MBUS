@@ -77,8 +77,13 @@ uint32_t DAC_VAL[2];
 uint32_t DAC_VAL2[2];
 
 struct WIFI wf;
-struct MBUS mb;			// Instancia Ethernet
-struct MBUS mb2;		// Instancia Wi-Fi
+struct MBUS mb_eth;			// Instancia Ethernet
+struct MBUS mb_wf;		// Instancia Wi-Fi
+
+uint8_t WF_DBG_EN=1;
+uint8_t ETH_DBG_EN=0;
+uint8_t WF_SND_FLAG=0;
+int wf_snd_flag_ticks=0;
 
 uint32_t REG[254];		//Registros para ver ModBUS
 
@@ -141,10 +146,10 @@ char	UART_RX_vect[384],
 		RXdata_DEBUG[384],
 		WIFI_NET[]="PLC_DEV",//WIFI_NET[]="Fibertel WiFi967 2.4GHz",//WIFI_NET[]="PLC_DEV",//
 		WIFI_PASS[]="12345678",//WIFI_PASS[]="0042880756",//WIFI_PASS[]="12345678",//
-		TCP_SERVER[]="192.168.0.47",//TCP_SERVER[]="192.168.0.102",//TCP_SERVER[]="192.168.0.47",
+		TCP_SERVER[]="192.168.0.65",//TCP_SERVER[]="192.168.0.102",//TCP_SERVER[]="192.168.0.47",
 		TCP_PORT[]="502",
 		TCP_SERVER_LOCAL[]="192.168.0.33",//TCP_SERVER[]="192.168.0.47",
-		TCP_SERVER_LOCAL_GWY[]="192.168.0.1",//TCP_SERVER[]="192.168.0.47",
+		TCP_SERVER_LOCAL_GWY[]="192.168.0.100",//TCP_SERVER[]="192.168.0.47",
 		TCP_SERVER_LOCAL_MSK[]="255.255.255.0",//TCP_SERVER[]="192.168.0.47",
 		TCP_PORT_LOCAL[]="502",
 		RX2[]="RX.",
@@ -209,7 +214,6 @@ void BorrarVect(void);
   */
 int main(void)
 {
-
   /* USER CODE BEGIN 1 */
 
 	//----------------------- ETHERNET W5100 Environment-------------------------//
@@ -217,7 +221,7 @@ int main(void)
 	//	GATEWAY ADDRESS
 		ETH.GAR[0]=192;
 		ETH.GAR[1]=168;
-		ETH.GAR[2]=0;
+		ETH.GAR[2]=3;
 		ETH.GAR[3]=1;
 	//	SUBNET MASK
 		ETH.SUBR[0]=255;
@@ -235,7 +239,7 @@ int main(void)
 	//	IP ADDRESS
 		ETH.SIPR[0]=192;
 		ETH.SIPR[1]=168;
-		ETH.SIPR[2]=0;
+		ETH.SIPR[2]=3;
 		ETH.SIPR[3]=34,
 	//  Socket RX memory
 		ETH.RMSR=0x55;
@@ -247,7 +251,7 @@ int main(void)
 	//	S0 Client IP ADDRESS
 		ETH.S0_DIPR[0]=192;
 		ETH.S0_DIPR[1]=168;
-		ETH.S0_DIPR[2]=0;
+		ETH.S0_DIPR[2]=3;
 		ETH.S0_DIPR[3]=3;
 	//	S0 Client IP ADDRESS
 		ETH.S0_DPORT[0]=0x01;
@@ -285,7 +289,7 @@ int main(void)
 		strcpy(wf._TCP_Local_Server_GWY, TCP_SERVER_LOCAL_GWY);
 		strcpy(wf._TCP_Local_Server_MSK, TCP_SERVER_LOCAL_MSK);
 		strcpy(wf._TCP_Local_Server_Port, TCP_PORT_LOCAL);
-		wf._TCP_Local_Server_EN=1;							//Habilito el Servidor Local
+		wf._TCP_Local_Server_EN=0;							//Habilito el Servidor Local
 		wf._data2SND[0]=0x00;//strcpy(wf._data2SND,"01;03;00;00;00;0A;C5;CD");//strcpy(wf._data2SND,"20;352;52#");
 		wf._data2SND[1]=0x00;
 		wf._data2SND[2]=0x00;
@@ -303,8 +307,9 @@ int main(void)
 		wf._data2SND[14]=0x34;
 		wf._data2SND[15]=0x35;
 		wf._n_D2SND=12;
-		wf._estado_conexion=100;	//wf._estado_conexion=1;					//Arranco en WiFi Desconectado
-
+		wf._estado_conexion=100;//Si no se define no arranca	//wf._estado_conexion=1;					//Arranco en WiFi Desconectado
+		wf._automatizacion=WF_CONNECT_TCP;//wf._automatizacion=WF_SEND;
+		//wf._send_data=1;
 		// ----------- INICIO - Seteo de módulo Ethernet W5100 ----------- //
 	    // Conectado a SPI2
 		// PIN NSS - PortB 12
@@ -320,11 +325,11 @@ int main(void)
 
 	 //---------------------- ModBUS -----------------------//
 
-		ModBUS_Config(&mb);		//ETHERNET como cliente TCP envía  ModBUS
-		mb._mode = CLIENTE;
-		ModBUS_Config(&mb2);	//WIFI como servidor TCP, recibe comadno ModBUS
-		mb2._mode = SERVIDOR;
-		ModBUS_F03_Assign(&mb,3,0xAA55);
+		ModBUS_Config(&mb_eth);		//ETHERNET como cliente TCP envía  ModBUS
+		mb_eth._mode = CLIENTE;
+		ModBUS_Config(&mb_wf);	//WIFI como servidor TCP, recibe comadno ModBUS
+		mb_wf._mode = CLIENTE;
+		ModBUS_F03_Assign(&mb_wf,3,0xAA55);
 
 
 	 //---------------------- ModBUS -----------------------//
@@ -361,12 +366,12 @@ int main(void)
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
   ITM0_Write("\r\n INICIO OK\r\n",strlen("\r\n INICIO OK\r\n"));
-  ESP8266_HW_Reset();		  //Reseteo el modulo desde el pin de RESET
-  ITM0_Write("\r\n RESET ESP8266 \r\n",strlen("\r\n RESET ESP8266 \r\n"));
+  ESP8266_HW_Reset();	//WRNNG Hardcoded	  //Reseteo el modulo desde el pin de RESET
+  if (WF_DBG_EN) ITM0_Write("\r\n RESET ESP8266 \r\n",strlen("\r\n RESET ESP8266 \r\n"));
   HAL_TIM_Base_Start(&htim6); //Timer como base de tiempo
   HAL_UART_Receive_IT(&huart4,(uint8_t *)UART_RX_byte,1);
-  HAL_UART_Receive_IT(&huart5,(uint8_t *)datarx1,1); //Habilito recepción por puerto serie 5
-  ITM0_Write("\r\n SET-UP W5100 \r\n",strlen("\r\n SET-UP W5100 \r\n"));
+  //HAL_UART_Receive_IT(&huart5,(uint8_t *)datarx1,1); //Habilito recepción por puerto serie 5
+  if (ETH_DBG_EN)ITM0_Write("\r\n SET-UP W5100 \r\n",strlen("\r\n SET-UP W5100 \r\n"));
   //HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
 	 ETH.operacion=SPI_WRITE;
 	 ETH.TX[1]= 0;
@@ -389,28 +394,28 @@ ETH.TX[3]= 0;
   if(ESP8266_HW_Init(&huart4)==1)
   {
 	  ESP_HW_Init=1;
-	  HAL_UART_Transmit(&huart5, "\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"),100);
-	  ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
+	  //HAL_UART_Transmit(&huart5, "\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"),100);
+	  if (WF_DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
   }
   else
   {
-	  ESP8266_HW_Reset();
+	  ESP8266_HW_Reset(); //WRNNG Hardcoded
 	  if(ESP8266_HW_Init(&huart4)==1)
 	  {
 		  ESP_HW_Init=1;
-		  HAL_UART_Transmit(&huart5, "\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"),100);
-		  ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
+		  //HAL_UART_Transmit(&huart5, "\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"),100);
+		  if (WF_DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
 	  }
 	  else
 	  {
 		  ESP_HW_Init=0;
-		  HAL_UART_Transmit(&huart5, "\r\n ESP HW Init Fail\r\n",strlen("\r\n ESP HW Init Fail\r\n"),100);
-		  ITM0_Write("\r\n ESP HW Init Fail\r\n",strlen("\r\n ESP HW Init Fail\r\n"));
+		  //HAL_UART_Transmit(&huart5, "\r\n ESP HW Init Fail\r\n",strlen("\r\n ESP HW Init Fail\r\n"),100);
+		  if (WF_DBG_EN)  ITM0_Write("\r\n ESP HW Init Fail\r\n",strlen("\r\n ESP HW Init Fail\r\n"));
 	  }
   }
 
   HAL_Delay(1000);
-  //HAL_Delay(5000);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -421,303 +426,94 @@ ETH.TX[3]= 0;
 
     /* USER CODE BEGIN 3 */
 //----------------INSTRUCCIONS POR PUERTO SERIE---------------------
-		if (FLAG_UART1==1)
-		{//3
-				Actualizar_RXdata(1);
-				//----- COMANDOS RECIBIDOS POR PUERTO SERIAL 1
-			 	wf._n_fcomp=strlen("ATDEBUG:");
-			 	wf._n_orig=items_rx;
-			 	if(FT_String_ND(RXdata_uart1,&wf._n_orig,"ATDEBUG:",&wf._n_fcomp,wf._uartRCVD_tok,&wf._n_tok,&ntestc,&wf._id_conn,FIND)==1)
-				{
-				 	wf._n_fcomp=strlen("ATDEBUG:");
-				 	wf._n_orig=items_rx;
-				 	FT_String_ND(RXdata_uart1,&wf._n_orig,"ATDEBUG:",&wf._n_fcomp,wf._uartRCVD_tok,&wf._n_tok,&ntestc,&wf._id_conn,TOK);
-				 	HAL_UART_Transmit(&huart4, RXdata_uart1,wf._n_orig,100);
-				 	//HAL_UART_Transmit(&huart5, RXdata_uart1,wf._n_orig);
-				 	HAL_UART_Receive_IT(&huart5,(uint8_t *)UART_RX_byte,1);
-					RXdata_uart1[0]='\0';
-					RXdata_uart1[2]='\0';
-					BorrarVect();
-				}
-					else
-					{
-				if(FT_String(RXdata_uart1,"RESTART_SM",wf._uartRCVD_tok,&chr_pos,FIND)==1)
-				{
-					HAL_UART_Receive_IT(&huart5,(uint8_t *)UART_RX_byte,1);
-					RXdata_uart1[0]='\0';
-					BorrarVect();
-				}
-					else
-					{
-					if(FT_String(RXdata_uart1,"CNWF",wf._uartRCVD_tok,&chr_pos,FIND)==1)
-					{
-						ConectarWIFI(&wf);
-						wf._estado_conexion=3;	//Cambio el estado de la maquina de estados a WiFi Conectando
-						RXdata_uart1[0]='\0';
-						BorrarVect();
-					}
-						else
-						{
-						if((FT_String(RXdata_uart1,"CNDWF",wf._uartRCVD_tok,&chr_pos,FIND)==1)&&(conexion==4))
-						{
-							//HAL_UART_Transmit(&huart5,"AT+CWQAP\r\n",strlen("AT+CWQAP\r\n"), 100);
-							DesconectarWIFI(&wf);
-							wf._estado=0;
-							wf._estado_conexion=1;	//Cambio el estado de la maquina de estados a WiFi Desconectado
-							RXdata_uart1[0]='\0';
-							BorrarVect();
-							AT_ESP8266_ND(&wf);//Debe procesar el pedido de desconexión
-						}
-							else
-							{
-								if((FT_String(RXdata_uart1,"CNDWFPWR",wf._uartRCVD_tok,&chr_pos,FIND)==1)&&(conexion==4))
-								{
-								HAL_UART_Transmit(&huart4,"AT+CWQAP\r\n",strlen("AT+CWQAP\r\n"), 100);
-								}
-									else
-									{
 
-							if(FT_String(RXdata_uart1,"CNTCP",wf._uartRCVD_tok,&chr_pos,FIND)==1)
-							{
-								ConectarTCP(&wf);
-								wf._estado_conexion=7;	//Cambio el estado de la maquina de estados a Conectando TCP
-								wf._estado=0;			//Borramos los estados de alarma
-
-								RXdata_uart1[0]='\0';
-								BorrarVect();
-							}
-								else
-								{
-								if(FT_String(RXdata_uart1,"CNDTCP",wf._uartRCVD_tok,&chr_pos,FIND)==1)
-								{
-									DesconectarTCP(&wf);
-									wf._estado_conexion=5;	//Cambio el estado de la maquina de estados a Conectando TCP
-									wf._estado=0;			//Borramos los estados de alarma
-									RXdata_uart1[0]='\0';
-									BorrarVect();
-								}
-									else
-									{
-										if(FT_String(RXdata_uart1,"DEBUG_SER_OFF",wf._uartRCVD_tok,&chr_pos,FIND)==1)
-										{
-											debug_ser=0;
-										}
-											else
-											{
-												if(FT_String(RXdata_uart1,"ESP_RESTART",wf._uartRCVD_tok,&chr_pos,FIND)==1)
-												{
-												 esp_restart=1;
-												}
-													else
-													{
-
-									if(FT_String(RXdata_uart1,"WIFINET:",wf._uartRCVD_tok,&chr_pos,FIND)==1) //Detecto que me mandan la red
-									{
-										/*FT_String(RXdata_uart1,"WIFINET:",wf._uartRCVD_tok,&chr_pos,TOK);
-										strcpy(wf._WF_Net,RXdata_uart1);
-
-										I2C_E2PROM( &hi2c1, iic._addr_WF_Net, 2, wf._WF_Net, strlen(wf._WF_Net), iic._send, WRITE);
-										HAL_Delay(1);
-										I2C_E2PROM( &hi2c1, iic._addr_WF_Net, 2, iic._WF_Net, 32, iic._receive, READ);
-										HAL_Delay(1);
-
-										RXdata_uart1[0]='\0';*/
-									}
-										else
-										{
-										if(FT_String(RXdata_uart1,"WIFIPASS:",wf._uartRCVD_tok,&chr_pos,FIND)==1) //Detecto que me mandan la red
-										{
-											/*FT_String(RXdata_uart1,"WIFIPASS:",wf._uartRCVD_tok,&chr_pos,TOK);
-											strcpy(wf._WF_Pass,RXdata_uart1);
-
-											I2C_E2PROM( &hi2c1, iic._addr_WF_Net_WF_Pass, 2, wf._WF_Pass, strlen(wf._WF_Pass), iic._send, WRITE);
-											HAL_Delay(1);
-											I2C_E2PROM( &hi2c1, iic._addr_WF_Net_WF_Pass, 2, iic._WF_Pass, 11, iic._receive, READ);
-											HAL_Delay(1);
-											RXdata_uart1[0]='\0';*/
-										}
-											else
-											{
-											if(FT_String(RXdata_uart1,"TCP:",wf._uartRCVD_tok,&chr_pos,FIND)==1) //Detecto que me mandan la red
-											{
-												/*FT_String(RXdata_uart1,"TCP:",wf._uartRCVD_tok,&chr_pos,TOK);
-												strcpy(wf._TCP_Remote_Server_IP,RXdata_uart1);
-
-												I2C_E2PROM( &hi2c1, iic._addr_tcp, 2, wf._TCP_Remote_Server_IP, strlen(wf._TCP_Remote_Server_IP), iic._send, WRITE);
-												HAL_Delay(1);
-												I2C_E2PROM( &hi2c1, iic._addr_tcp, 2, iic._TCP_Remote_Server_IP, 16, iic._receive, READ);
-												HAL_Delay(1);
-												RXdata_uart1[0]='\0';*/
-											}
-												else
-												{
-												if(FT_String(RXdata_uart1,"TCP_PORT:",wf._uartRCVD_tok,&chr_pos,FIND)==1) //Detecto que me mandan la red
-												{
-													/*FT_String(RXdata_uart1,"TCP_PORT:",wf._uartRCVD_tok,&chr_pos,TOK);
-													strcpy(wf._TCP_Remote_Server_Port,RXdata_uart1);
-
-													I2C_E2PROM( &hi2c1, iic._addr_tcp_port, 2, wf._TCP_Remote_Server_Port, strlen(wf._TCP_Remote_Server_Port), iic._send, WRITE);
-													HAL_Delay(1);
-													I2C_E2PROM( &hi2c1, iic._addr_tcp_port, 2, iic._TCP_Remote_Server_Port, 5, iic._receive, READ);
-													HAL_Delay(1);
-													I2C_E2PROM( &hi2c1, iic._addr_WF_Net, 2, iic._TCP_Remote_Server_Port,41, iic._receive, READ);
-													HAL_Delay(1);
-													I2C_E2PROM( &hi2c1, iic._addr_tcp, 2, iic._TCP_Remote_Server_Port,32, iic._receive, READ);
-													HAL_Delay(1);
-													RXdata_uart1[0]='\0';*/
-												}
-													else
-													{
-													if(FT_String(RXdata_uart1,"WIFIRDNET:",wf._uartRCVD_tok,&chr_pos,FIND)==1) //Detecto que me mandan la red
-													{
-														//Leo el valor de la red
-														/*I2C_E2PROM( &hi2c1, iic._addr_WF_Net, 2, iic._WF_Net, 32, iic._receive, READ);
-														HAL_Delay(1);
-														strncat(iic._serial,";WIFIRDNET;",strlen(";WIFIRDNET;"));
-														strncat(iic._serial,iic._receive,strlen(iic._receive));
-														strncat(iic._serial,";",1);
-														RXdata_uart1[0]='\0';
-														HAL_UART_Transmit_IT(&huart1,(uint8_t*)iic._serial, strlen(iic._serial));
-														iic._serial[0]='\0';*/
-													}
-														else
-														{
-														if(FT_String(RXdata_uart1,"WIFIRDPASS:",wf._uartRCVD_tok,&chr_pos,FIND)==1) //Detecto que me mandan la red
-														{
-															//Leo el valor de la red
-															/*I2C_E2PROM( &hi2c1, iic._addr_WF_Net_WF_Pass, 2, iic._WF_Net, 11, iic._receive, READ);
-															HAL_Delay(1);
-															strncat(iic._serial,";WIFIRDPASS;",strlen(";WIFIRDPASS;"));
-															strncat(iic._serial,iic._receive,strlen(iic._receive));
-															strncat(iic._serial,";",1);
-															RXdata_uart1[0]='\0';
-															HAL_UART_Transmit_IT(&huart1,(uint8_t*)iic._serial, strlen(iic._serial));
-															iic._serial[0]='\0';*/
-														}
-															else
-															{
-															if(FT_String(RXdata_uart1,"TCPRD:",wf._uartRCVD_tok,&chr_pos,FIND)==1) //Detecto que me mandan la red
-															{
-																//Leo el valor de la red
-																/*I2C_E2PROM( &hi2c1, iic._addr_tcp, 2, iic._WF_Net, 16, iic._receive, READ);
-																HAL_Delay(1);
-																strncat(iic._serial,";TCPRD;",strlen(";TCPRD;"));
-																strncat(iic._serial,iic._receive,strlen(iic._receive));
-																strncat(iic._serial,";",1);
-																RXdata_uart1[0]='\0';
-																HAL_UART_Transmit_IT(&huart1,(uint8_t*)iic._serial, strlen(iic._serial));
-																iic._serial[0]='\0';*/
-															}
-																else
-																{
-															if(FT_String(RXdata_uart1,"TCPRDPORT:",wf._uartRCVD_tok,&chr_pos,FIND)==1) //Detecto que me mandan la red
-															{
-																//Leo el valor de la red
-																/*I2C_E2PROM( &hi2c1, iic._addr_tcp_port, 2, iic._WF_Net, 5, iic._receive, READ);
-																HAL_Delay(1);
-																strncat(iic._serial,";TCPRDPORT;",strlen(";TCPRDPORT;"));
-																strncat(iic._serial,iic._receive,strlen(iic._receive));
-																strncat(iic._serial,";",1);
-																RXdata_uart1[0]='\0';
-																HAL_UART_Transmit_IT(&huart1,(uint8_t*)iic._serial, strlen(iic._serial));
-																iic._serial[0]='\0';*/
-															}
-															 else
-																{
-																if(FT_String(RXdata_uart1,"ENDSND:",wf._uartRCVD_tok,&chr_pos,FIND)==1) //Detecto que me mandan la red
-																{
-																	//Deshabilita el envío de data recibida por el ESP8266 al puerto 1
-																	//densnd=1;
-																}
-																 else
-																	{
-																	if(FT_String(RXdata_uart1,"ENSND:",wf._uartRCVD_tok,&chr_pos,FIND)==1) //Detecto que me mandan la red
-																	{
-																		//Deshabilita el envío de data recibida por el ESP8266 al puerto 1
-																		//densnd=0;
-																	}
-
-					}}}}}}}}}}}}}}}}}}
-
-				FLAG_UART1=0;
-		}//3
 //----------------INSTRUCCIONS POR PUERTO SERIE---------------------
 
-		//ITM_Port32(31) = 1;
-		//HAL_Delay(500);
-		//ITM_Port32(31) = 2;
-		//_write(2);
-		//printf("test \r\n");
+/**************[ INICIO PIDO ENVIAR DATOS ]**************/
 
+
+	  if (ESP_HW_Init==1)
+	  {
+			if((WF_SND_FLAG==1)&&(wf._TCP_Local_Server_EN==0)&&(wf._estado_conexion>=609))
+			{	wf_snd_flag_ticks=0;
+				WF_SND_FLAG=0;
+				ModBUS_F03_Request(&mb_wf, 0 , 10);
+				ModBUS(&mb_wf);							// Create ModBUS info to be sent
+				CopiaVector(wf._data2SND,mb_wf._MBUS_2SND,mb_wf._n_MBUS_2SND,0,'A');
+				wf._n_D2SND=mb_wf._n_MBUS_2SND;
+
+				if(wf._automatizacion < WF_SEND)		// Send only with automation sent diasabled
+				{
+					EnviarDatos(&wf);
+					wf._estado_conexion=TCP_SND_EN_CURSO;
+				}
+			}
+	  }
+/**************[ FIN PIDO ENVIAR DATOS ]**************/
 
 		if ((FLAG_UART2==1)||(FLAG_TIMEOUT==1))  //Si recibí datos o me fui por TimeOUT
 		{
 			if(FLAG_UART2==1)
 				{
+					CopiaVector(wf._uartRCVD,UART_RX_vect_hld,UART_RX_items,1,CMP_VECT);
 					FLAG_UART2=0;
 
-					if (error_rxdata==3)
-					{
-						error_rxdata=0;
-					}
-					if (error_rxdata==1)
-					{
-						error_rxdata=5;
-						error_rxdata=0;
-					}
-
-
-
+						if (error_rxdata==3)
+						{
+							error_rxdata=0;
+						}
+						if (error_rxdata==1)
+						{
+							error_rxdata=5;
+							error_rxdata=0;
+						}
 				}
 			if(FLAG_TIMEOUT==1)
-				{
-					FLAG_TIMEOUT=0;
-					//strcpy(wf._uartRCVD, UART_RX_vect_hld);
-				}
+					{
+						FLAG_TIMEOUT=0;
+					}
 
 			if (ESP_HW_Init==1) //Si el módulo se inició correctamente
-			{
-
-
-				wf._n_orig=UART_RX_items;
-				CopiaVector(wf._uartRCVD,UART_RX_vect_hld,UART_RX_items,1,CMP_VECT);
-				resultado=AT_ESP8266_ND(&wf); // Lo proceso despues de haberlo recibido por uart no de toque.
-
-				if (wf._new_data_rcv==1)
 				{
-				  	//-------------------------------------------------------//
-					//				Genero informacion ModBUS				 //
-					//-------------------------------------------------------//
+					/*************** Copio y proceso info recibida ***************/
+					wf._n_orig=UART_RX_items;
+					CopiaVector(wf._uartRCVD,UART_RX_vect_hld,UART_RX_items,1,CMP_VECT);
+					resultado=AT_ESP8266_ND(&wf);
 
-					CopiaVector(mb2._MBUS_RCVD,wf._dataRCV,wf._n_dataRCV,0,'A');
-				  	mb2._n_MBUS_RCVD=wf._n_dataRCV;
-				  	//CopiaVector(mb._MBUS_RCVD,wf._dataRCV,5,0,'A');  //Solo copio la info si es correcta
-				  	//-------- Proceso el ModBUS ----------------------------//
-				  	ModBUS(&mb2);
-				 	//--------Copio vector ModBUS a data a enviar------------//
-				  	CopiaVector(wf._data2SND,mb2._MBUS_2SND,mb2._n_MBUS_2SND,0,'A');
-				 	wf._n_D2SND=mb2._n_MBUS_2SND;
-//220818
-				 	wf._send_data=1;//
-				 	wf._new_data_rcv=0;//
-					//-------------------------------------------------------//
+					/*************** Si recibo datos y estan correctos me fijo que son ***************/
 
-				}
-			}
+					if ((wf._new_data_rcv==1)&&(wf._estado_rcv_data==99))
+					{
+
+						CopiaVector(mb_wf._MBUS_RCVD,wf._dataRCV,wf._n_dataRCV,0,'A');
+						mb_wf._n_MBUS_RCVD=wf._n_dataRCV;
+
+						ModBUS(&mb_wf);
+
+						CopiaVector(wf._data2SND,mb_wf._MBUS_2SND,mb_wf._n_MBUS_2SND,0,'A');
+						wf._n_D2SND=mb_wf._n_MBUS_2SND;
+						wf._new_data_rcv=0;//
+						wf._send_data=1;
+					}else
+						{
+							// DATA ERRONEA NO SE PROCESA
+						}
+					}
+
 		}
 
 		if (ESP_HW_Init==1) //Si el módulo se inició correctamente
-		{
-			conexion=WiFi_Conn_ND(&wf,&huart4,1);	//Tiene que ir en el main el chequeo es constante
-		}
-		if (esp_restart==1)
-		{
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
-			HAL_Delay(2000);//210419
-			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
-			HAL_Delay(5000);//210419
-			esp_restart=0;
-		}
+			{
+				conexion=WiFi_Conn_ND(&wf,&huart4,1);	//Tiene que ir en el main el chequeo es constante
+			}
+		if (esp_restart==1) //WRNNG Hardcoded RESET WIFI
+			{
+				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_RESET);
+				HAL_Delay(2000);//210419
+				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
+				HAL_Delay(5000);//210419
+				esp_restart=0;
+			}
 
   }//2
   /* USER CODE END 3 */
@@ -1237,7 +1033,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(DEBUG_OSC1_GPIO_Port, DEBUG_OSC1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LED_Pin|SPI2_NSS_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LED_Pin|SPI2_NSS_Pin|DBG_ESP_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(RST_WIFI_GPIO_Port, RST_WIFI_Pin, GPIO_PIN_SET);
@@ -1263,12 +1059,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : SPI2_NSS_Pin */
-  GPIO_InitStruct.Pin = SPI2_NSS_Pin;
+  /*Configure GPIO pins : SPI2_NSS_Pin DBG_ESP_Pin */
+  GPIO_InitStruct.Pin = SPI2_NSS_Pin|DBG_ESP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(SPI2_NSS_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 }
 
@@ -1288,14 +1084,24 @@ int ITM0_Write( char *ptr, int len)
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
-	ms_ticks++;
+
+	ms_ticks++;	//100 ms
+
 	ESP_ticks++;
-	if(mb._w_answer) ETH_ticks++;
-	if ( mb._w_answer && (mb._timeout < ETH_ticks))
+	if(mb_eth._w_answer) ETH_ticks++;
+	if ( mb_eth._w_answer && (mb_eth._timeout < ETH_ticks))
 		{
-			mb._w_answer=0;
+			mb_eth._w_answer=0;
 			ETH_ticks=0;
 		}
+
+// ENVIO DATOS WF ---------------------------------------------------------------//
+
+	if((wf._estado_conexion==609 || wf._estado_conexion==700)&&(wf._TCP_Local_Server_EN==0))  wf_snd_flag_ticks++;
+
+	if(wf_snd_flag_ticks>= 2000 && wf._ejecucion!=1 && wf._TCP_Local_Server_EN==0)		 	  WF_SND_FLAG=1;
+
+// ENVIO DATOS WF ----------------------------------- ---------------------------//
 
 if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
   {
@@ -1311,42 +1117,7 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 	  	if (asc==1) MBUS_ticks--;
 	  	if (MBUS_ticks==0) asc=0;
 
-/*		ModBUS_F03_Assign(&mb,5,MBUS_ticks);
-		ModBUS_F03_Assign(&mb,6,MBUS_ticks+10);
-		ModBUS_F03_Assign(&mb,7,MBUS_ticks+20);
-		ModBUS_F03_Assign(&mb,8,MBUS_ticks+30);
-		ModBUS_F03_Assign(&mb,9,MBUS_ticks+40);
-		ModBUS_F03_Assign(&mb,10,MBUS_ticks+50);
-		ModBUS_F03_Assign(&mb,11,MBUS_ticks+60);
 
-		ModBUS_F04_Assign(&mb,5,MBUS_ticks);
-		ModBUS_F04_Assign(&mb,6,MBUS_ticks+1);
-		ModBUS_F04_Assign(&mb,7,MBUS_ticks+2);
-		ModBUS_F04_Assign(&mb,8,MBUS_ticks+3);
-		ModBUS_F04_Assign(&mb,9,MBUS_ticks+4);
-		ModBUS_F04_Assign(&mb,10,MBUS_ticks+5);
-		ModBUS_F04_Assign(&mb,11,MBUS_ticks+6);
-
-		ModBUS_F03_Assign(&mb2,5,MBUS_ticks);
-		ModBUS_F03_Assign(&mb2,6,MBUS_ticks+10);
-		ModBUS_F03_Assign(&mb2,7,MBUS_ticks+20);
-		ModBUS_F03_Assign(&mb2,8,MBUS_ticks+30);
-		ModBUS_F03_Assign(&mb2,9,MBUS_ticks+40);
-		ModBUS_F03_Assign(&mb2,10,MBUS_ticks+50);
-		ModBUS_F03_Assign(&mb2,11,MBUS_ticks+60);*/
-
-
-
-	  DAC_VAL[0]+=128;
-	  DAC_VAL2[0]+=256;
-	  if(DAC_VAL[0]==4096) DAC_VAL[0]=0;
-	  if(DAC_VAL2[0]==4096) DAC_VAL2[0]=0;
-	  //HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_11);
-	  //------------ DAC MODO BLOQUEANTE --------------------//
-	  //HAL_DAC_SetValue(&hdac,DAC_CHANNEL_1,DAC_ALIGN_12B_R,DAC_VAL[0]);
-	  //HAL_DAC_SetValue(&hdac,DAC_CHANNEL_2,DAC_ALIGN_12B_R,DAC_VAL2[0]);
-	  //------------ DAC MODO BLOQUEANTE --------------------//
-	  // ITM0_Write("\r\n LED CHANGE \r\n",strlen("\r\n\r\n LED CHANGE \r\n\r\n"));
 	  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_11);
 	  if(spi_no_debug)
 	  	  {
@@ -1356,7 +1127,7 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 	     {
 			 case SOCK_CLOSED :
 				 {
-					ITM0_Write("\r\nS0_SOCK_CLOSED \r\n",strlen("\r\nS0_SOCK_CLOSED \r\n"));
+					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_CLOSED \r\n",strlen("\r\nS0_SOCK_CLOSED \r\n"));
 					eth_wr_SOCKET_CMD(&ETH, 0 ,OPEN );
 				 }
 			 break;
@@ -1364,35 +1135,35 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 				 {
 					 if(ETH.S0_ENserver == 1)
 					 {
-							ITM0_Write("\r\nS0_SOCK_INIT \r\n",strlen("\r\nS0_SOCK_INIT \r\n"));
+						 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_INIT \r\n",strlen("\r\nS0_SOCK_INIT \r\n"));
 							eth_wr_SOCKET_CMD(&ETH, 0, LISTEN );
 					 }
 					 else
 					 {
 						 	eth_wr_SOCKET_CMD(&ETH,0, CONNECT);																				//only for server
-						 	ITM0_Write("\r\nETH-W5100-CONNECT\r\n",strlen("\r\nETH-W5100-CONNECT\r\n"));
+						 	if (ETH_DBG_EN)ITM0_Write("\r\nETH-W5100-CONNECT\r\n",strlen("\r\nETH-W5100-CONNECT\r\n"));
 					 }
 
 				 }
 			 break;
 			 case SOCK_LISTEN :
 				 {
-					ITM0_Write("\r\nS0_SOCK_LISTEN \r\n",strlen("\r\nS0_SOCK_LISTEN \r\n"));
+					 if (ETH_DBG_EN)ITM0_Write("\r\nS0_SOCK_LISTEN \r\n",strlen("\r\nS0_SOCK_LISTEN \r\n"));
 				 }
 			 break;
 			 case SOCK_SYNSENT :
 				 {
-					ITM0_Write("\r\nS0_SOCK_SYNSENT \r\n",strlen("\r\nS0_SOCK_SYNSENT \r\n"));
+					 if (ETH_DBG_EN)ITM0_Write("\r\nS0_SOCK_SYNSENT \r\n",strlen("\r\nS0_SOCK_SYNSENT \r\n"));
 				 }
 			 break;
 			 case SOCK_SYNRECV :
 				 {
-					ITM0_Write("\r\nS0_SOCK_SYNRECV \r\n",strlen("\r\nS0_SOCK_SYNRECV \r\n"));
+					 if (ETH_DBG_EN)ITM0_Write("\r\nS0_SOCK_SYNRECV \r\n",strlen("\r\nS0_SOCK_SYNRECV \r\n"));
 				 }
 			 break;
 			 case SOCK_ESTABLISHED :
 				 {
-					ITM0_Write("\r\nS0_SOCK_ESTABLISHED \r\n",strlen("\r\nS0_SOCK_ESTABLISHED \r\n"));
+					 if (ETH_DBG_EN)ITM0_Write("\r\nS0_SOCK_ESTABLISHED \r\n",strlen("\r\nS0_SOCK_ESTABLISHED \r\n"));
 
 					if (ETH.S0_ENserver == 1)  // Si el puerto Ethernet actúa como server (Recibe datos conexión mas pedido mbus
 					{
@@ -1406,19 +1177,19 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 								while(eth_rd_SOCKET_CMD(&ETH,0))						// wait until end of command execution
 								{}
 
-								CopiaVector(mb._MBUS_RCVD, ETH.data, S0_get_size, 0, ADC_VAL );
-								mb._n_MBUS_RCVD=S0_get_size;
-								if(ModBUS_Check(mb._MBUS_RCVD, mb._n_MBUS_RCVD))		//Ckecks ModBUS type data
+								CopiaVector(mb_eth._MBUS_RCVD, ETH.data, S0_get_size, 0, ADC_VAL );
+								mb_eth._n_MBUS_RCVD=S0_get_size;
+								if(ModBUS_Check(mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD))		//Ckecks ModBUS type data
 								{
-									ModBUS(&mb);										//ModBUS protocol execution
-									CopiaVector(ETH.data, mb._MBUS_2SND, mb._n_MBUS_2SND, 0, ADC_VAL);
+									ModBUS(&mb_eth);										//ModBUS protocol execution
+									CopiaVector(ETH.data, mb_eth._MBUS_2SND, mb_eth._n_MBUS_2SND, 0, ADC_VAL);
 								}
 								else
 								{
-									ITM0_Write("\r\n NO MBUS \r\n",strlen("\r\n\r\n NO MBUS \r\n\r\n"));
+									if (ETH_DBG_EN) ITM0_Write("\r\n NO MBUS \r\n",strlen("\r\n\r\n NO MBUS \r\n\r\n"));
 								}
 
-								send_size=mb._n_MBUS_2SND;  //ModBUS data qty
+								send_size=mb_eth._n_MBUS_2SND;  //ModBUS data qty
 
 								eth_wr_SOCKET_DATA(&ETH,0, &tx_mem_pointer, send_size);	// write socket data
 								SPI_ETH_WR_REG_16(&ETH,0x424,tx_mem_pointer);			// write tx memory pointer
@@ -1431,7 +1202,7 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 					else	// Puerto ethernet labura como esclavo, se conecta al server para pedir datos
 					{
 
-						if (mb._w_answer==0)
+						if (mb_eth._w_answer==0)
 						{
 							//Si ya envié vuelvo a enviar
 
@@ -1449,17 +1220,17 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 							ETH.data[11]=0x0A;
 							send_size=12;
 
-							ModBUS_F03_Request(&mb,0,15);
-							CopiaVector(ETH.data, mb._MBUS_2SND, 12, 0, ADC_VAL );
+							ModBUS_F03_Request(&mb_eth,0,15);
+							CopiaVector(ETH.data, mb_eth._MBUS_2SND, 12, 0, ADC_VAL );
 
 							eth_wr_SOCKET_DATA(&ETH,0, &tx_mem_pointer, send_size);	// write socket data
 							SPI_ETH_WR_REG_16(&ETH,0x424,tx_mem_pointer);			// write tx memory pointer
 							eth_wr_SOCKET_CMD(&ETH,0,SEND);							// write command to execute
 							while(eth_rd_SOCKET_CMD(&ETH,0))						// wait until end of command execution
 							{}
-							mb._w_answer=1;	// Waiting answer flag
+							mb_eth._w_answer=1;	// Waiting answer flag
 							ETH_ticks=0;	// restart counting
-							ITM0_Write("\r\n SENT MBUS REQ \r\n",strlen("\r\n\r\n SENT MBUS REQ \r\n\r\n"));
+							if (ETH_DBG_EN) ITM0_Write("\r\n SENT MBUS REQ \r\n",strlen("\r\n\r\n SENT MBUS REQ \r\n\r\n"));
 						}
 						else
 						{
@@ -1472,21 +1243,21 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 								while(eth_rd_SOCKET_CMD(&ETH,0))						// wait until end of command execution
 								{}
 
-								CopiaVector(mb._MBUS_RCVD, ETH.data, S0_get_size, 0, ADC_VAL );
-								mb._n_MBUS_RCVD=S0_get_size;
-								if(ModBUS_Check(mb._MBUS_RCVD, mb._n_MBUS_RCVD))		//Ckecks ModBUS type data
+								CopiaVector(mb_eth._MBUS_RCVD, ETH.data, S0_get_size, 0, ADC_VAL );
+								mb_eth._n_MBUS_RCVD=S0_get_size;
+								if(ModBUS_Check(mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD))		//Ckecks ModBUS type data
 									{
-										mb._w_answer=0;  									//Si el mensaje recibido ya es modbus digo que ya recibi
+										mb_eth._w_answer=0;  									//Si el mensaje recibido ya es modbus digo que ya recibi
 										ETH_ticks=0;
-										ModBUS(&mb);										//ModBUS protocol execution
-										//CopiaVector(ETH.data, mb._MBUS_2SND, mb._n_MBUS_2SND, 0, ADC_VAL);
-										CopiaVector(ETH.swap, mb._MBUS_RCVD, mb._n_MBUS_RCVD, 0, ADC_VAL);
-										CopiaVector(mb2._Holding_Registers, mb._Holding_Registers, 64, 0, ADC_VAL);
-										ITM0_Write("\r\n RCVD MBUS REQ \r\n",strlen("\r\n\r\n RCVD MBUS REQ \r\n\r\n"));
+										ModBUS(&mb_eth);										//ModBUS protocol execution
+										//CopiaVector(ETH.data, mb_eth._MBUS_2SND, mb_eth._n_MBUS_2SND, 0, ADC_VAL);
+										CopiaVector(ETH.swap, mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD, 0, ADC_VAL);
+										CopiaVector(mb_wf._Holding_Registers, mb_eth._Holding_Registers, 64, 0, ADC_VAL);
+										if (ETH_DBG_EN) ITM0_Write("\r\n RCVD MBUS REQ \r\n",strlen("\r\n\r\n RCVD MBUS REQ \r\n\r\n"));
 									}
 									else
 										{
-											ITM0_Write("\r\n NO MBUS \r\n",strlen("\r\n\r\n NO MBUS \r\n\r\n"));
+										if (ETH_DBG_EN) ITM0_Write("\r\n NO MBUS \r\n",strlen("\r\n\r\n NO MBUS \r\n\r\n"));
 										}
 
 
@@ -1497,17 +1268,17 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 			 break;
 			 case SOCK_FIN_WAIT :
 				 {
-					ITM0_Write("\r\nS0_SOCK_FIN_WAIT \r\n",strlen("\r\nS0_SOCK_FIN_WAIT \r\n"));
+					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_FIN_WAIT \r\n",strlen("\r\nS0_SOCK_FIN_WAIT \r\n"));
 				 }
 			 break;
 			 case SOCK_CLOSING :
 				 {
-					ITM0_Write("\r\nS0_SOCK_CLOSING \r\n",strlen("\r\nS0_SOCK_CLOSING \r\n"));
+					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_CLOSING \r\n",strlen("\r\nS0_SOCK_CLOSING \r\n"));
 				 }
 			 break;
 			 case  SOCK_TIME_WAIT :
 				 {
-					ITM0_Write("\r\nS0_SOCK_TIME_WAIT \r\n",strlen("\r\nS0_SOCK_TIME_WAIT \r\n"));
+					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_TIME_WAIT \r\n",strlen("\r\nS0_SOCK_TIME_WAIT \r\n"));
 					eth_wr_SOCKET_CMD(&ETH,0, DISCON );
 					while( SPI_ETH_REG(&ETH, S0_CR_ADDR_BASEH,S0_CR_ADDR_BASEL ,SPI_READ, spi_Data,1))
 					{}
@@ -1515,7 +1286,7 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 			 break;
 			 case SOCK_CLOSE_WAIT :
 				 {
-					ITM0_Write("\r\nS0_SOCK_CLOSE_WAIT \r\n",strlen("\r\nS0_SOCK_CLOSE_WAIT \r\n"));
+					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_CLOSE_WAIT \r\n",strlen("\r\nS0_SOCK_CLOSE_WAIT \r\n"));
 					eth_wr_SOCKET_CMD(&ETH,0,DISCON );
 					while( SPI_ETH_REG(&ETH, S0_CR_ADDR_BASEH,S0_CR_ADDR_BASEL ,SPI_READ, spi_Data,1))
 					{}
@@ -1523,27 +1294,27 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 			 break;
 			 case SOCK_LAST_ACK :
 				 {
-					ITM0_Write("\r\nS0_SOCK_LAST_ACK \r\n",strlen("\r\nS0_SOCK_LAST_ACK \r\n"));
+					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_LAST_ACK \r\n",strlen("\r\nS0_SOCK_LAST_ACK \r\n"));
 				 }
 			 break;
 			 case SOCK_UDP :
 				 {
-					ITM0_Write("\r\nS0_SOCK_UDP \r\n",strlen("\r\nS0_SOCK_UDP \r\n"));
+					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_UDP \r\n",strlen("\r\nS0_SOCK_UDP \r\n"));
 				 }
 			 break;
 			 case  SOCK_IPRAW :
 				 {
-					ITM0_Write("\r\nS0_SOCK_IPRAW \r\n",strlen("\r\nS0_SOCK_IPRAW \r\n"));
+					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_IPRAW \r\n",strlen("\r\nS0_SOCK_IPRAW \r\n"));
 				 }
 			 break;
 			 case  SOCK_MACRAW :
 				 {
-					ITM0_Write("\r\nS0_SOCK_MACRAW \r\n",strlen("\r\nS0_SOCK_MACRAW \r\n"));
+					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_MACRAW \r\n",strlen("\r\nS0_SOCK_MACRAW \r\n"));
 				 }
 			 break;
 			 case SOCK_PPOE :
 				 {
-					ITM0_Write("\r\nS0_SOCK_PPOE \r\n",strlen("\r\nS0_SOCK_PPOE \r\n"));
+					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_PPOE \r\n",strlen("\r\nS0_SOCK_PPOE \r\n"));
 				 }
 			 break;
 
@@ -1559,26 +1330,9 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 		  //ETH.TX[3]=0x00;
 		  SPI_ETH(&ETH);
 	  	  }
-
-
 	  if(min_ticks==2)//if(min_ticks==10)
 		  {
-		  	  min_ticks=0;
-		  	  /*
-		  	  CopiaVector(mb._MBUS_RCVD,wf._dataRCV,wf._n_dataRCV,0,'A');
-		  	  mb._n_MBUS_RCVD=wf._n_dataRCV;
-		  	  CopiaVector(mb._MBUS_RCVD,wf._dataRCV,5,0,'A');  //Solo copio la info si es correcta
-		  	  ModBUS(&mb);
-		 	  CopiaVector(wf._data2SND,mb._MBUS_2SND,mb._n_MBUS_2SND,0,'A');
-		 	  wf._n_D2SND=mb._n_MBUS_2SND;*/
-
-		  	/*  if (conexion>=4)
-		  	  {
-		  	  wf._estado_conexion=3;
-		  	  EnviarDatos(&wf);
-		  	 //HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_11);
-
-		  	  }*/
+		  	  min_ticks=0;  /* SETEO CADA 2 min*/
 		  }
   }
 
@@ -1610,7 +1364,7 @@ if(wf._ejecucion==1)
 		if (FLAG_TIMEOUT!=1)
 		{
 			if(wf._instruccion!=2) wf._ticks++;//-----------------------Solo cuento una vez reconcido el timeout, cuando entro al timeout no cuento
-			if(wf._instruccion==2)wf._ticks2++;
+			if(wf._instruccion==2) wf._ticks2++;
 		}
 
 
@@ -1706,7 +1460,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim2)
 		 CopiaVector(UART_RX_vect_hld,UART_RX_vect,UART_RX_items,1,CMP_VECT);
 		 HAL_UART_Receive_IT(&huart4,(uint8_t *)UART_RX_byte,1); //Habilito le recepcón de puerto serie al terminar
 
-		 if (debug_ser==1)
+		 if (WF_DBG_EN==1)
 		 {
 			 ITM0_Write((uint8_t *)UART_RX_vect_hld,UART_RX_items);
 		 }

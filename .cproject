@@ -45,11 +45,11 @@
 									<listOptionValue builtIn="false" value="../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Device/ST/STM32F1xx/Include"/>
 									<listOptionValue builtIn="false" value="../Drivers/CMSIS/Include"/>
-									<listOptionValue builtIn="false" value="&quot;C:\Users\mggarcia\OneDrive - Universidad Nacional de la Matanza\xx-DATA ELECTRONICA\STM32\LIBRERIAS C\ESP8266&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;C:\Users\mggarcia\OneDrive - Universidad Nacional de la Matanza\xx-DATA ELECTRONICA\STM32\LIBRERIAS C\STRING&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;C:\Users\mggarcia\OneDrive - Universidad Nacional de la Matanza\xx-DATA ELECTRONICA\STM32\LIBRERIAS C\ModBUS&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;C:\Users\mggarcia\OneDrive - Universidad Nacional de la Matanza\xx-DATA ELECTRONICA\STM32\LIBRERIAS C\I2C&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;C:\Users\mggarcia\OneDrive - Universidad Nacional de la Matanza\xx-DATA ELECTRONICA\STM32\LIBRERIAS C\STM32_ETH_W5100&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;D:\iot\LIBRERIAS C\ESP8266&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;D:\iot\LIBRERIAS C\STRING&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;D:\iot\LIBRERIAS C\ModBUS&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;D:\iot\LIBRERIAS C\I2C&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;D:\iot\LIBRERIAS C\STM32_ETH_W5100&quot;"/>
 								</option>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="true" id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.option.includefiles.1358490050" name="Include files (-include)" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.option.includefiles" useByScannerDiscovery="false" valueType="includeFiles"/>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.1643610762" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>
@@ -78,13 +78,14 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="ESP8266"/>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="I2C"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="ModBUS"/>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="STM32_ETH_W5100"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="STRING"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="STM32_ETH_W5100"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="ESP8266"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="I2C"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="HTTP"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>
