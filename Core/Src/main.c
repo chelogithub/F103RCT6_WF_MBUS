@@ -80,7 +80,7 @@ struct WIFI wf;
 struct MBUS mb_eth;			// Instancia Ethernet
 struct MBUS mb_wf;		// Instancia Wi-Fi
 
-uint8_t WF_DBG_EN=1;
+
 uint8_t ETH_DBG_EN=0;
 uint8_t WF_SND_FLAG=0;
 int wf_snd_flag_ticks=0;
@@ -163,7 +163,7 @@ char	UART_RX_vect[384],
 int UART_RX_items=0,
     ESP_ticks=0,
 	MBUS_ticks=0,
-	ETH_ticks=0,
+	MB_TOUT_ticks=0,
 	items_rx_debug=0,
     ticks=0,
 	ntesta=17,
@@ -367,7 +367,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   ITM0_Write("\r\n INICIO OK\r\n",strlen("\r\n INICIO OK\r\n"));
   ESP8266_HW_Reset();	//WRNNG Hardcoded	  //Reseteo el modulo desde el pin de RESET
-  if (WF_DBG_EN) ITM0_Write("\r\n RESET ESP8266 \r\n",strlen("\r\n RESET ESP8266 \r\n"));
+  if (wf._DBG_EN) ITM0_Write("\r\n RESET ESP8266 \r\n",strlen("\r\n RESET ESP8266 \r\n"));
   HAL_TIM_Base_Start(&htim6); //Timer como base de tiempo
   HAL_UART_Receive_IT(&huart4,(uint8_t *)UART_RX_byte,1);
   //HAL_UART_Receive_IT(&huart5,(uint8_t *)datarx1,1); //Habilito recepción por puerto serie 5
@@ -395,7 +395,7 @@ ETH.TX[3]= 0;
   {
 	  ESP_HW_Init=1;
 	  //HAL_UART_Transmit(&huart5, "\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"),100);
-	  if (WF_DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
+	  if (wf._DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
   }
   else
   {
@@ -404,13 +404,13 @@ ETH.TX[3]= 0;
 	  {
 		  ESP_HW_Init=1;
 		  //HAL_UART_Transmit(&huart5, "\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"),100);
-		  if (WF_DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
+		  if (wf._DBG_EN) ITM0_Write("\r\n ESP HW Init OK\r\n",strlen("\r\n ESP HW Init OK\r\n"));
 	  }
 	  else
 	  {
 		  ESP_HW_Init=0;
 		  //HAL_UART_Transmit(&huart5, "\r\n ESP HW Init Fail\r\n",strlen("\r\n ESP HW Init Fail\r\n"),100);
-		  if (WF_DBG_EN)  ITM0_Write("\r\n ESP HW Init Fail\r\n",strlen("\r\n ESP HW Init Fail\r\n"));
+		  if (wf._DBG_EN)  ITM0_Write("\r\n ESP HW Init Fail\r\n",strlen("\r\n ESP HW Init Fail\r\n"));
 	  }
   }
 
@@ -434,8 +434,9 @@ ETH.TX[3]= 0;
 
 	  if (ESP_HW_Init==1)
 	  {
-			if((WF_SND_FLAG==1)&&(wf._TCP_Local_Server_EN==0)&&(wf._estado_conexion>=609))
-			{	wf_snd_flag_ticks=0;
+			if((WF_SND_FLAG==1)&&(wf._TCP_Local_Server_EN==0)&&(wf._estado_conexion>=609)&&(ETH.S0_data_available))
+			{	ETH.S0_data_available=0;
+				wf_snd_flag_ticks=0;
 				WF_SND_FLAG=0;
 				ModBUS_F03_Request(&mb_wf, 0 , 10);
 				ModBUS(&mb_wf);							// Create ModBUS info to be sent
@@ -1088,11 +1089,11 @@ void SysTick_Handler(void)
 	ms_ticks++;	//100 ms
 
 	ESP_ticks++;
-	if(mb_eth._w_answer) ETH_ticks++;
-	if ( mb_eth._w_answer && (mb_eth._timeout < ETH_ticks))
+	if(mb_eth._w_answer) MB_TOUT_ticks++;
+	if ( mb_eth._w_answer && (mb_eth._timeout < MB_TOUT_ticks))
 		{
 			mb_eth._w_answer=0;
-			ETH_ticks=0;
+			MB_TOUT_ticks=0;
 		}
 
 // ENVIO DATOS WF ---------------------------------------------------------------//
@@ -1102,6 +1103,19 @@ void SysTick_Handler(void)
 	if(wf_snd_flag_ticks>= 2000 && wf._ejecucion!=1 && wf._TCP_Local_Server_EN==0)		 	  WF_SND_FLAG=1;
 
 // ENVIO DATOS WF ----------------------------------- ---------------------------//
+
+/**********************[ INICIO - EHTERNET WDG ] **********************/
+
+	if(ETH.S0_status == 0)
+	{
+		ETH.ETH_WDG++;
+		if (ETH.ETH_WDG>=64000)
+		{
+			ETH.ETH_WDG=64000;
+		}
+	}
+
+/**********************[ FIN 	- EHTERNET WDG ] **********************/
 
 if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
   {
@@ -1123,12 +1137,22 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 	  	  {
 	  if(SPI_READ_EN)
 	  {
-	     switch(eth_rd_SOCKET_STAT(&ETH,0))	//Check Socket status
+	     ETH.S0_status=eth_rd_SOCKET_STAT(&ETH,0);
+
+		  switch(ETH.S0_status)	//Check Socket status
 	     {
 			 case SOCK_CLOSED :
 				 {
 					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_CLOSED \r\n",strlen("\r\nS0_SOCK_CLOSED \r\n"));
 					eth_wr_SOCKET_CMD(&ETH, 0 ,OPEN );
+					 // Si no tengo intento de ARP por 5 segundos vuelvo a inicializar
+					 if(ETH.ETH_WDG>=5000)
+					 {
+						 eth_init(&ETH);
+
+						 eth_socket_init(&ETH,0);
+					 }
+
 				 }
 			 break;
 			 case  SOCK_INIT :
@@ -1137,11 +1161,13 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 					 {
 						 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_INIT \r\n",strlen("\r\nS0_SOCK_INIT \r\n"));
 							eth_wr_SOCKET_CMD(&ETH, 0, LISTEN );
+							ETH.ETH_WDG=0;
 					 }
 					 else
 					 {
 						 	eth_wr_SOCKET_CMD(&ETH,0, CONNECT);																				//only for server
 						 	if (ETH_DBG_EN)ITM0_Write("\r\nETH-W5100-CONNECT\r\n",strlen("\r\nETH-W5100-CONNECT\r\n"));
+						 	ETH.ETH_WDG=0;
 					 }
 
 				 }
@@ -1149,21 +1175,25 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 			 case SOCK_LISTEN :
 				 {
 					 if (ETH_DBG_EN)ITM0_Write("\r\nS0_SOCK_LISTEN \r\n",strlen("\r\nS0_SOCK_LISTEN \r\n"));
+					 ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case SOCK_SYNSENT :
 				 {
 					 if (ETH_DBG_EN)ITM0_Write("\r\nS0_SOCK_SYNSENT \r\n",strlen("\r\nS0_SOCK_SYNSENT \r\n"));
+					 ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case SOCK_SYNRECV :
 				 {
 					 if (ETH_DBG_EN)ITM0_Write("\r\nS0_SOCK_SYNRECV \r\n",strlen("\r\nS0_SOCK_SYNRECV \r\n"));
+					 ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case SOCK_ESTABLISHED :
 				 {
 					 if (ETH_DBG_EN)ITM0_Write("\r\nS0_SOCK_ESTABLISHED \r\n",strlen("\r\nS0_SOCK_ESTABLISHED \r\n"));
+					 ETH.ETH_WDG=0;
 
 					if (ETH.S0_ENserver == 1)  // Si el puerto Ethernet actúa como server (Recibe datos conexión mas pedido mbus
 					{
@@ -1179,6 +1209,9 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 
 								CopiaVector(mb_eth._MBUS_RCVD, ETH.data, S0_get_size, 0, ADC_VAL );
 								mb_eth._n_MBUS_RCVD=S0_get_size;
+
+								if(S0_get_size > 0)	{ ETH.S0_data_available=1;}					//Flag data received
+
 								if(ModBUS_Check(mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD))		//Ckecks ModBUS type data
 								{
 									ModBUS(&mb_eth);										//ModBUS protocol execution
@@ -1229,7 +1262,7 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 							while(eth_rd_SOCKET_CMD(&ETH,0))						// wait until end of command execution
 							{}
 							mb_eth._w_answer=1;	// Waiting answer flag
-							ETH_ticks=0;	// restart counting
+							MB_TOUT_ticks=0;	// restart counting
 							if (ETH_DBG_EN) ITM0_Write("\r\n SENT MBUS REQ \r\n",strlen("\r\n\r\n SENT MBUS REQ \r\n\r\n"));
 						}
 						else
@@ -1245,10 +1278,13 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 
 								CopiaVector(mb_eth._MBUS_RCVD, ETH.data, S0_get_size, 0, ADC_VAL );
 								mb_eth._n_MBUS_RCVD=S0_get_size;
+
+								if(S0_get_size > 0)	{ ETH.S0_data_available=1;}
+
 								if(ModBUS_Check(mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD))		//Ckecks ModBUS type data
 									{
 										mb_eth._w_answer=0;  									//Si el mensaje recibido ya es modbus digo que ya recibi
-										ETH_ticks=0;
+										MB_TOUT_ticks=0;
 										ModBUS(&mb_eth);										//ModBUS protocol execution
 										//CopiaVector(ETH.data, mb_eth._MBUS_2SND, mb_eth._n_MBUS_2SND, 0, ADC_VAL);
 										CopiaVector(ETH.swap, mb_eth._MBUS_RCVD, mb_eth._n_MBUS_RCVD, 0, ADC_VAL);
@@ -1269,11 +1305,13 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 			 case SOCK_FIN_WAIT :
 				 {
 					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_FIN_WAIT \r\n",strlen("\r\nS0_SOCK_FIN_WAIT \r\n"));
+					 ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case SOCK_CLOSING :
 				 {
 					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_CLOSING \r\n",strlen("\r\nS0_SOCK_CLOSING \r\n"));
+					 ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case  SOCK_TIME_WAIT :
@@ -1282,6 +1320,7 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 					eth_wr_SOCKET_CMD(&ETH,0, DISCON );
 					while( SPI_ETH_REG(&ETH, S0_CR_ADDR_BASEH,S0_CR_ADDR_BASEL ,SPI_READ, spi_Data,1))
 					{}
+					ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case SOCK_CLOSE_WAIT :
@@ -1290,31 +1329,37 @@ if (ms_ticks==100)//(ms_ticks==250)//(ms_ticks==50)
 					eth_wr_SOCKET_CMD(&ETH,0,DISCON );
 					while( SPI_ETH_REG(&ETH, S0_CR_ADDR_BASEH,S0_CR_ADDR_BASEL ,SPI_READ, spi_Data,1))
 					{}
+					ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case SOCK_LAST_ACK :
 				 {
 					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_LAST_ACK \r\n",strlen("\r\nS0_SOCK_LAST_ACK \r\n"));
+					 ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case SOCK_UDP :
 				 {
 					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_UDP \r\n",strlen("\r\nS0_SOCK_UDP \r\n"));
+					 ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case  SOCK_IPRAW :
 				 {
 					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_IPRAW \r\n",strlen("\r\nS0_SOCK_IPRAW \r\n"));
+					 ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case  SOCK_MACRAW :
 				 {
 					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_MACRAW \r\n",strlen("\r\nS0_SOCK_MACRAW \r\n"));
+					 ETH.ETH_WDG=0;
 				 }
 			 break;
 			 case SOCK_PPOE :
 				 {
 					 if (ETH_DBG_EN) ITM0_Write("\r\nS0_SOCK_PPOE \r\n",strlen("\r\nS0_SOCK_PPOE \r\n"));
+					 ETH.ETH_WDG=0;
 				 }
 			 break;
 
@@ -1460,24 +1505,24 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim2)
 		 CopiaVector(UART_RX_vect_hld,UART_RX_vect,UART_RX_items,1,CMP_VECT);
 		 HAL_UART_Receive_IT(&huart4,(uint8_t *)UART_RX_byte,1); //Habilito le recepcón de puerto serie al terminar
 
-		 if (WF_DBG_EN==1)
+		 if (wf._DBG_EN==1)
 		 {
 			 ITM0_Write((uint8_t *)UART_RX_vect_hld,UART_RX_items);
 		 }
 
 
 }
-void Actualizar_RXdata(int x)
+/*void Actualizar_RXdata(int x)
  {
 
 	 if (x==1)
 	 {
 		int h=0;													//Borro el vector vectrx
-		/*while(h<384)
+		while(h<384)
 				{
 						RXdata_uart1[h]=0;
 						h++;
-				}*/
+				}
 		h=0;
 		while(h<items_rx)								//Copio el vector recibido en vectrx
 			{
@@ -1492,7 +1537,7 @@ void Actualizar_RXdata(int x)
 				{
 						UART_RX_vect[h2]=0;
 						h2++;
-				}*/
+				}
 		h2=0;
 		while(h2<UART_RX_items)								//Copio el vector recibido en vectrx
 			{
@@ -1500,7 +1545,7 @@ void Actualizar_RXdata(int x)
 						h2++;
 			}
 		}
- }
+ }*/
 
 void ESP8266_HW_Reset(void)
 {

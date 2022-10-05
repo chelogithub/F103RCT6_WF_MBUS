@@ -33,32 +33,32 @@
 		<link>
 			<name>ESP8266</name>
 			<type>2</type>
-			<location>D:/iot/LIBRERIAS C/ESP8266</location>
+			<location>C:/Users/mggarcia/OneDrive - Universidad Nacional de la Matanza/xx-DATA ELECTRONICA/STM32/LIBRERIAS C/ESP8266</location>
 		</link>
 		<link>
 			<name>HTTP</name>
 			<type>2</type>
-			<location>D:/iot/LIBRERIAS C/HTTP</location>
+			<location>C:/Users/mggarcia/OneDrive - Universidad Nacional de la Matanza/xx-DATA ELECTRONICA/STM32/LIBRERIAS C/HTTP</location>
 		</link>
 		<link>
 			<name>I2C</name>
 			<type>2</type>
-			<location>D:/iot/LIBRERIAS C/I2C</location>
+			<location>C:/Users/mggarcia/OneDrive - Universidad Nacional de la Matanza/xx-DATA ELECTRONICA/STM32/LIBRERIAS C/I2C</location>
 		</link>
 		<link>
 			<name>ModBUS</name>
 			<type>2</type>
-			<location>D:/iot/LIBRERIAS C/ModBUS</location>
+			<location>C:/Users/mggarcia/OneDrive - Universidad Nacional de la Matanza/xx-DATA ELECTRONICA/STM32/LIBRERIAS C/ModBUS</location>
 		</link>
 		<link>
 			<name>STM32_ETH_W5100</name>
 			<type>2</type>
-			<location>D:/iot/LIBRERIAS C/STM32_ETH_W5100</location>
+			<location>C:/Users/mggarcia/OneDrive - Universidad Nacional de la Matanza/xx-DATA ELECTRONICA/STM32/LIBRERIAS C/STM32_ETH_W5100</location>
 		</link>
 		<link>
 			<name>STRING</name>
 			<type>2</type>
-			<location>D:/iot/LIBRERIAS C/STRING</location>
+			<location>C:/Users/mggarcia/OneDrive - Universidad Nacional de la Matanza/xx-DATA ELECTRONICA/STM32/LIBRERIAS C/STRING</location>
 		</link>
 	</linkedResources>
 </projectDescription>
