@@ -80,6 +80,13 @@ struct WIFI wf;
 struct MBUS mb_eth;			// Instancia Ethernet
 struct MBUS mb_wf;		// Instancia Wi-Fi
 
+char post[512];
+char body[512];
+char ENDPOINT[]="/tepelco/add",
+     SERVER_IP[]="192.168.0.91",
+     PORT[]="8000";
+uint16_t ADDR=1;
+
 
 uint8_t ETH_DBG_EN=0;
 uint8_t WF_SND_FLAG=0;
@@ -136,24 +143,20 @@ uint8_t ESP_REinit=0,			//Conteo de intentos de incializacion
 		CP_ai=0;
 		SPI_READ_EN=0;
 
-char	UART_RX_vect[384],
-		datarx_uart1[384],
-		AT_debug[384],
+char	UART_RX_vect[512],
+		datarx_uart1[512],
 		datarx1[2],
-		UART_RX_vect_hld[384],
-		UART_RX_vect[384],
-		RXdata_uart1[384],
-		RXdata_DEBUG[384],
+		UART_RX_vect_hld[512],
 		WIFI_NET[]="PLC_DEV",//WIFI_NET[]="Fibertel WiFi967 2.4GHz",//WIFI_NET[]="PLC_DEV",//
 		WIFI_PASS[]="12345678",//WIFI_PASS[]="0042880756",//WIFI_PASS[]="12345678",//
-		TCP_SERVER[]="192.168.0.65",//TCP_SERVER[]="192.168.0.102",//TCP_SERVER[]="192.168.0.47",
-		TCP_PORT[]="502",
-		TCP_SERVER_LOCAL[]="192.168.0.33",//TCP_SERVER[]="192.168.0.47",
+		TCP_SERVER[]="192.168.0.91",//TCP_SERVER[]="192.168.0.65",//TCP_SERVER[]="192.168.0.102",//TCP_SERVER[]="192.168.0.47",
+		TCP_PORT[]="8000",//TCP_PORT[]="502",
+		TCP_SERVER_LOCAL[]="192.168.0.32",//TCP_SERVER[]="192.168.0.47",
 		TCP_SERVER_LOCAL_GWY[]="192.168.0.100",//TCP_SERVER[]="192.168.0.47",
 		TCP_SERVER_LOCAL_MSK[]="255.255.255.0",//TCP_SERVER[]="192.168.0.47",
 		TCP_PORT_LOCAL[]="502",
 		RX2[]="RX.",
-		RX[384],
+		//RX[512],
 		CMP_VECT[]="\0",
 	    TESTA[32],
 		TESTB[32],
@@ -221,7 +224,7 @@ int main(void)
 	//	GATEWAY ADDRESS
 		ETH.GAR[0]=192;
 		ETH.GAR[1]=168;
-		ETH.GAR[2]=3;
+		ETH.GAR[2]=0;
 		ETH.GAR[3]=1;
 	//	SUBNET MASK
 		ETH.SUBR[0]=255;
@@ -239,7 +242,7 @@ int main(void)
 	//	IP ADDRESS
 		ETH.SIPR[0]=192;
 		ETH.SIPR[1]=168;
-		ETH.SIPR[2]=3;
+		ETH.SIPR[2]=0;
 		ETH.SIPR[3]=34,
 	//  Socket RX memory
 		ETH.RMSR=0x55;
@@ -251,7 +254,7 @@ int main(void)
 	//	S0 Client IP ADDRESS
 		ETH.S0_DIPR[0]=192;
 		ETH.S0_DIPR[1]=168;
-		ETH.S0_DIPR[2]=3;
+		ETH.S0_DIPR[2]=0;
 		ETH.S0_DIPR[3]=3;
 	//	S0 Client IP ADDRESS
 		ETH.S0_DPORT[0]=0x01;
@@ -432,21 +435,42 @@ ETH.TX[3]= 0;
 /**************[ INICIO PIDO ENVIAR DATOS ]**************/
 
 
+
+
+
 	  if (ESP_HW_Init==1)
 	  {
 			if((WF_SND_FLAG==1)&&(wf._TCP_Local_Server_EN==0)&&(wf._estado_conexion>=609)&&(ETH.S0_data_available))
 			{	ETH.S0_data_available=0;
 				wf_snd_flag_ticks=0;
 				WF_SND_FLAG=0;
-				ModBUS_F03_Request(&mb_wf, 0 , 10);
+				/*ModBUS_F03_Request(&mb_wf, 0 , 10);
 				ModBUS(&mb_wf);							// Create ModBUS info to be sent
 				CopiaVector(wf._data2SND,mb_wf._MBUS_2SND,mb_wf._n_MBUS_2SND,0,'A');
-				wf._n_D2SND=mb_wf._n_MBUS_2SND;
+				wf._n_D2SND=mb_wf._n_MBUS_2SND;*/
 
-				if(wf._automatizacion < WF_SEND)		// Send only with automation sent diasabled
+				if( httpPOST(	ENDPOINT, SERVER_IP,PORT,
+								ModBUS_F03_Read(&mb_eth,0),
+								ModBUS_F03_Read(&mb_eth,1),
+								ModBUS_F03_Read(&mb_eth,2),
+								ModBUS_F03_Read(&mb_eth,3),
+								ModBUS_F03_Read(&mb_eth,4),
+								ModBUS_F03_Read(&mb_eth,5),
+								ModBUS_F03_Read(&mb_eth,6),
+								ModBUS_F03_Read(&mb_eth,7),
+								ModBUS_F03_Read(&mb_eth,8),
+								ModBUS_F03_Read(&mb_eth,9),
+								ADDR,
+								post, body, 512))
+
 				{
-					EnviarDatos(&wf);
-					wf._estado_conexion=TCP_SND_EN_CURSO;
+							CopiaVector(wf._data2SND,post,strlen(post),0,'A');
+							wf._n_D2SND=strlen(post);
+							if(wf._automatizacion < WF_SEND)		// Send only with automation sent diasabled
+							{
+								EnviarDatos(&wf);
+								wf._estado_conexion=TCP_SND_EN_CURSO;
+							}
 				}
 			}
 	  }
@@ -1477,7 +1501,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *INTSERIE)
 		UART1_ticks=0;										//Reseteo Timer
 		datarx_uart1[uart1pass]=datarx1[0];
 		uart1pass++;
-		if(uart1pass>=384) uart1pass=384;									//limito el vector para evitar que cuelgue el micro
+		if(uart1pass>=512) uart1pass=512;									//limito el vector para evitar que cuelgue el micro
 		HAL_UART_Receive_IT(INTSERIE,(uint8_t *)datarx1,1);
 	 }
 
@@ -1485,7 +1509,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *INTSERIE)
 		 {
 			UART_RX_vect[UART_RX_pos]=UART_RX_byte[0];
 			UART_RX_pos++;
-			if(UART_RX_pos>=384) UART_RX_pos=384;
+			if(UART_RX_pos>=512) UART_RX_pos=512;
 			HAL_TIM_OC_Start_IT(&htim2, TIM_CHANNEL_1);//HAL_TIM_Base_Start_IT(&htim7);	//Habilito el timer
 			TIM2->CNT=1;
 			EN_UART2_TMR=1;	//Habilito Timeout de software
@@ -1501,7 +1525,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim2)
 		 EN_UART2_TMR=0;
 		 UART_RX_items=UART_RX_pos;
 		 UART_RX_pos=0;
-		 UART_RX_vect[384]='\0'; //Finalizo el vector a la fuerza ya que recibo hasta 124
+		 UART_RX_vect[512]='\0'; //Finalizo el vector a la fuerza ya que recibo hasta 124
 		 CopiaVector(UART_RX_vect_hld,UART_RX_vect,UART_RX_items,1,CMP_VECT);
 		 HAL_UART_Receive_IT(&huart4,(uint8_t *)UART_RX_byte,1); //Habilito le recepcón de puerto serie al terminar
 
@@ -1518,7 +1542,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim2)
 	 if (x==1)
 	 {
 		int h=0;													//Borro el vector vectrx
-		while(h<384)
+		while(h<512)
 				{
 						RXdata_uart1[h]=0;
 						h++;
@@ -1533,7 +1557,7 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim2)
 	 if (x==2)
 	 {
 		int h2=0;													//Borro el vector vectrx
-		/*while(h2<384)
+		/*while(h2<512)
 				{
 						UART_RX_vect[h2]=0;
 						h2++;
